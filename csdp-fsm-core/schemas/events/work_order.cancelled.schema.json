@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://csdp.example/schemas/events/work_order.cancelled.schema.json",
+  "title": "WORK_ORDER.CANCELLED payload",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["reason_code"],
+  "properties": {
+    "reason_code": {
+      "type": "string",
+      "enum": ["DUPLICATE", "CLIENT_REQUEST", "NO_ACCESS", "SCOPE_CHANGE", "OTHER"]
+    },
+    "comment": { "type": ["string", "null"], "maxLength": 2000 }
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://csdp.example/schemas/events/work.completed.schema.json",
+  "title": "WORK.COMPLETED payload",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["work_summary"],
+  "properties": {
+    "actual_end_reported": { "type": ["string", "null"], "format": "date-time" },
+    "work_summary": { "type": "string", "minLength": 3, "maxLength": 4000 },
+
+    "symptoms": {
+      "type": ["array", "null"],
+      "items": { "type": "string", "minLength": 1, "maxLength": 128 },
+      "maxItems": 50
+    },
+    "causes": {
+      "type": ["array", "null"],
+      "items": { "type": "string", "minLength": 1, "maxLength": 128 },
+      "maxItems": 50
+    },
+    "actions": {
+      "type": ["array", "null"],
+      "items": { "type": "string", "minLength": 1, "maxLength": 128 },
+      "maxItems": 100
+    }
+  }
+}

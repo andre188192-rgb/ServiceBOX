@@ -1,0 +1,723 @@
+openapi: 3.0.3
+info:
+  title: CNC-FSM Core API
+  version: "1.0.0"
+  description: >
+    Event-driven FSM kernel for CNC Field Service Management.
+    Command API accepts events (append-only). Query API exposes projections.
+servers:
+  - url: https://api.example.com
+    description: Production
+  - url: http://localhost:8080
+    description: Local
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Events
+    description: Command API (write)
+  - name: WorkOrders
+    description: Query API (read projections)
+  - name: Engineers
+    description: Query API (engineer board)
+  - name: SLA
+    description: Query API (SLA projection)
+  - name: KPI
+    description: Query API (aggregates)
+  - name: Reference
+    description: Reference data (catalogs)
+
+paths:
+  /v1/events:
+    post:
+      tags: [Events]
+      summary: Submit domain event (Command API)
+      description: >
+        Client proposes an event. Server validates RBAC/ABAC, FSM transitions,
+        payload schema, idempotency, time-policy. If accepted, event is appended
+        to event_store and projections are updated (transactionally or async).
+      operationId: postEvent
+      parameters:
+        - name: X-Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
+            minLength: 8
+            maxLength: 128
+          description: Optional idempotency key for web/api sources.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventEnvelope"
+            examples:
+              createWorkOrder:
+                summary: WORK_ORDER.CREATED
+                value:
+                  event_type: WORK_ORDER.CREATED
+                  entity_type: work_order
+                  entity_id: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+                  source: web
+                  payload:
+                    client_id: "9b8b0d4a-9bb1-4a21-8fd2-8d8f2a0a2f2b"
+                    asset_id: "0b2c7b0c-7f7c-4ed2-9ad4-1b0a0c3c0d0e"
+                    priority: CRITICAL
+                    type: EMERGENCY_REPAIR
+                    description: "Machine stopped with alarm 401"
+      responses:
+        "200":
+          description: Decision returned (accepted/rejected/review)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventDecision"
+              examples:
+                accepted:
+                  value:
+                    decision: ACCEPTED
+                    reason_code: OK
+                    event_id: "b54c2b8a-3d14-4d9e-aad8-9c7a2fe7b2d7"
+                    projection_version: 12
+                rejected:
+                  value:
+                    decision: REJECTED
+                    reason_code: ERR_INVALID_TRANSITION
+                    details:
+                      from_state: PLANNED
+                      event_type: WORK_ORDER.CLOSED
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden (RBAC/ABAC)
+        "409":
+          description: Idempotency conflict (if policy chooses to surface as conflict)
+        "422":
+          description: Schema validation failed
+        "429":
+          description: Rate limited
+
+  /v1/work-orders:
+    get:
+      tags: [WorkOrders]
+      summary: List work orders (projection)
+      operationId: listWorkOrders
+      parameters:
+        - name: business_state
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [NEW, PLANNED, IN_PROGRESS, ON_HOLD, COMPLETED, CLOSED, CANCELLED]
+        - name: assigned_engineer_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: asset_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of work orders
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkOrderList"
+
+  /v1/work-orders/{work_order_id}:
+    get:
+      tags: [WorkOrders]
+      summary: Get work order (projection)
+      operationId: getWorkOrder
+      parameters:
+        - name: work_order_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Current work order projection
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkOrderCurrent"
+        "404":
+          description: Not found
+
+  /v1/work-orders/{work_order_id}/timeline:
+    get:
+      tags: [WorkOrders]
+      summary: Get work order timeline (audit)
+      operationId: getWorkOrderTimeline
+      parameters:
+        - name: work_order_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 200
+      responses:
+        "200":
+          description: Timeline events
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Timeline"
+
+  /v1/work-orders/{work_order_id}/parts:
+    get:
+      tags: [WorkOrders]
+      summary: Get work order parts (projection)
+      operationId: getWorkOrderParts
+      parameters:
+        - name: work_order_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Parts projection for a work order
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkOrderParts"
+
+  /v1/work-orders/{work_order_id}/evidence:
+    get:
+      tags: [WorkOrders]
+      summary: Get work order evidence (projection)
+      operationId: getWorkOrderEvidence
+      parameters:
+        - name: work_order_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Evidence projection for a work order
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkOrderEvidence"
+
+  /v1/engineers/board:
+    get:
+      tags: [Engineers]
+      summary: Engineer board (status)
+      operationId: getEngineerBoard
+      responses:
+        "200":
+          description: Engineer board projection
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EngineerBoard"
+
+  /v1/sla/{work_order_id}:
+    get:
+      tags: [SLA]
+      summary: SLA view for a work order
+      operationId: getSlaView
+      parameters:
+        - name: work_order_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: SLA projection
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SlaView"
+        "404":
+          description: Not found
+
+  /v1/kpi:
+    get:
+      tags: [KPI]
+      summary: KPI aggregates (MVP)
+      description: >
+        MVP endpoint for computed KPIs. In v1, may be computed on read from events
+        or served from a materialized projection.
+      operationId: getKpi
+      parameters:
+        - name: period_from
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: period_to
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: KPI payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KpiView"
+
+  /v1/ref/{catalog}:
+    get:
+      tags: [Reference]
+      summary: Get reference catalog items
+      operationId: getReferenceCatalog
+      parameters:
+        - name: catalog
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: active
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: true
+      responses:
+        "200":
+          description: Reference catalog items
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReferenceCatalog"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    EventEnvelope:
+      type: object
+      additionalProperties: false
+      required: [event_type, entity_type, entity_id, payload, source]
+      properties:
+        event_id:
+          type: string
+          format: uuid
+        client_event_id:
+          type: string
+          nullable: true
+          minLength: 8
+          maxLength: 128
+        idempotency_key:
+          type: string
+          nullable: true
+          minLength: 8
+          maxLength: 128
+        correlation_id:
+          type: string
+          format: uuid
+          nullable: true
+        causation_id:
+          type: string
+          format: uuid
+          nullable: true
+        schema_version:
+          type: integer
+          minimum: 1
+          default: 1
+        event_type:
+          type: string
+          minLength: 3
+          maxLength: 64
+        entity_type:
+          type: string
+          enum: [work_order, asset, engineer, contract]
+        entity_id:
+          type: string
+          format: uuid
+        created_at_reported:
+          type: string
+          format: date-time
+          nullable: true
+        source:
+          type: string
+          enum: [web, mobile, api, automation, system]
+        payload:
+          type: object
+      allOf:
+        - if:
+            properties:
+              source:
+                const: mobile
+          then:
+            required: [client_event_id]
+
+    EventDecision:
+      type: object
+      additionalProperties: false
+      required: [decision, reason_code]
+      properties:
+        decision:
+          type: string
+          enum: [ACCEPTED, REJECTED, NEEDS_REVIEW]
+        reason_code:
+          type: string
+        details:
+          type: object
+          nullable: true
+        event_id:
+          type: string
+          format: uuid
+          nullable: true
+        projection_version:
+          type: integer
+          nullable: true
+
+    WorkOrderCurrent:
+      type: object
+      additionalProperties: false
+      required: [work_order_id, client_id, asset_id, priority, work_type, business_state, execution_state, sla_state, last_event_at, version]
+      properties:
+        work_order_id:
+          type: string
+          format: uuid
+        client_id:
+          type: string
+          format: uuid
+        asset_id:
+          type: string
+          format: uuid
+        priority:
+          type: string
+          enum: [CRITICAL, HIGH, MEDIUM, LOW]
+        work_type:
+          type: string
+          enum: [EMERGENCY_REPAIR, MAINTENANCE, CONSULTING_AUDIT, INSTALL_COMMISSION, TRAINING]
+
+        business_state:
+          type: string
+          enum: [NEW, PLANNED, IN_PROGRESS, ON_HOLD, COMPLETED, CLOSED, CANCELLED]
+        execution_state:
+          type: string
+          enum: [NOT_STARTED, TRAVEL, WORK, WAITING_PARTS, WAITING_CLIENT, FINISHED]
+        sla_state:
+          type: string
+          enum: [IN_SLA, AT_RISK, BREACHED, ACCEPTED_BREACH]
+
+        assigned_engineer_id:
+          type: string
+          format: uuid
+          nullable: true
+        assigned_team_id:
+          type: string
+          format: uuid
+          nullable: true
+
+        scheduled_start:
+          type: string
+          format: date-time
+          nullable: true
+        scheduled_end:
+          type: string
+          format: date-time
+          nullable: true
+
+        actual_start_reported:
+          type: string
+          format: date-time
+          nullable: true
+        actual_end_reported:
+          type: string
+          format: date-time
+          nullable: true
+        actual_start_effective:
+          type: string
+          format: date-time
+          nullable: true
+        actual_end_effective:
+          type: string
+          format: date-time
+          nullable: true
+
+        downtime_minutes:
+          type: integer
+          nullable: true
+
+        last_event_id:
+          type: string
+          format: uuid
+          nullable: true
+        last_event_at:
+          type: string
+          format: date-time
+
+        version:
+          type: integer
+          minimum: 0
+
+    WorkOrderList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkOrderCurrent"
+        next_cursor:
+          type: string
+          nullable: true
+
+    WorkOrderPartsItem:
+      type: object
+      additionalProperties: false
+      required: [part_id, reserved_qty, installed_qty, consumed_qty, last_event_at]
+      properties:
+        part_id:
+          type: string
+          format: uuid
+        reserved_qty:
+          type: number
+        installed_qty:
+          type: number
+        consumed_qty:
+          type: number
+        last_event_at:
+          type: string
+          format: date-time
+
+    WorkOrderParts:
+      type: object
+      additionalProperties: false
+      required: [work_order_id, items]
+      properties:
+        work_order_id:
+          type: string
+          format: uuid
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkOrderPartsItem"
+
+    WorkOrderEvidenceItem:
+      type: object
+      additionalProperties: false
+      required: [evidence_id, evidence_type, url, created_at]
+      properties:
+        evidence_id:
+          type: string
+          format: uuid
+        evidence_type:
+          type: string
+          enum: [PHOTO, DOCUMENT, SIGNATURE]
+        url:
+          type: string
+        meta:
+          type: object
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        created_by:
+          type: string
+          format: uuid
+          nullable: true
+
+    WorkOrderEvidence:
+      type: object
+      additionalProperties: false
+      required: [work_order_id, items]
+      properties:
+        work_order_id:
+          type: string
+          format: uuid
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkOrderEvidenceItem"
+
+    TimelineEvent:
+      type: object
+      additionalProperties: false
+      required: [event_id, event_type, created_at_system, payload]
+      properties:
+        event_id:
+          type: string
+          format: uuid
+        event_type:
+          type: string
+        created_at_system:
+          type: string
+          format: date-time
+        created_by:
+          type: string
+          format: uuid
+          nullable: true
+        payload:
+          type: object
+
+    Timeline:
+      type: object
+      additionalProperties: false
+      required: [work_order_id, events]
+      properties:
+        work_order_id:
+          type: string
+          format: uuid
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/TimelineEvent"
+
+    EngineerBoardItem:
+      type: object
+      additionalProperties: false
+      required: [engineer_id, status]
+      properties:
+        engineer_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [AVAILABLE, TRAVEL, WORK, OFFLINE, UNAVAILABLE]
+        current_work_order_id:
+          type: string
+          format: uuid
+          nullable: true
+        last_seen_at:
+          type: string
+          format: date-time
+          nullable: true
+        workload_minutes_7d:
+          type: integer
+          minimum: 0
+
+    EngineerBoard:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/EngineerBoardItem"
+
+    SlaView:
+      type: object
+      additionalProperties: false
+      required: [work_order_id, state, last_calc_at]
+      properties:
+        work_order_id:
+          type: string
+          format: uuid
+        reaction_deadline_at:
+          type: string
+          format: date-time
+          nullable: true
+        restore_deadline_at:
+          type: string
+          format: date-time
+          nullable: true
+        breached_at:
+          type: string
+          format: date-time
+          nullable: true
+        state:
+          type: string
+          enum: [IN_SLA, AT_RISK, BREACHED, ACCEPTED_BREACH]
+        last_calc_at:
+          type: string
+          format: date-time
+
+    KpiView:
+      type: object
+      additionalProperties: false
+      properties:
+        period_from:
+          type: string
+          format: date-time
+          nullable: true
+        period_to:
+          type: string
+          format: date-time
+          nullable: true
+        reaction_time_avg_minutes:
+          type: number
+          nullable: true
+        mttr_avg_minutes:
+          type: number
+          nullable: true
+        sla_compliance_percent:
+          type: number
+          nullable: true
+        first_time_fix_percent:
+          type: number
+          nullable: true
+
+    ReferenceCatalogItem:
+      type: object
+      additionalProperties: false
+      required: [code, title]
+      properties:
+        code:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        is_active:
+          type: boolean
+        sort_order:
+          type: integer
+        meta:
+          type: object
+          nullable: true
+
+    ReferenceCatalog:
+      type: object
+      additionalProperties: false
+      required: [catalog, items]
+      properties:
+        catalog:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReferenceCatalogItem"
