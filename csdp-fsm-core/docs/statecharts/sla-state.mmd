@@ -1,0 +1,15 @@
+stateDiagram-v2
+  [*] --> IN_SLA
+
+  IN_SLA --> AT_RISK: SLA_AT_RISK (server only)
+  AT_RISK --> IN_SLA: SLA_RECOVERED (server only)
+
+  IN_SLA --> BREACHED: SLA_BREACHED (server only)
+  AT_RISK --> BREACHED: SLA_BREACHED (server only)
+
+  BREACHED --> ACCEPTED_BREACH: SLA_BREACH_ACCEPTED (approval required)
+  ACCEPTED_BREACH --> [*]
+
+  %% Invariants:
+  %% - All SLA events are server-originated.
+  %% - SLA_BREACH_ACCEPTED requires approval (role + doc/comment).
