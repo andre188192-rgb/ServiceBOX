@@ -192,6 +192,46 @@ paths:
               schema:
                 $ref: "#/components/schemas/Timeline"
 
+  /v1/work-orders/{work_order_id}/parts:
+    get:
+      tags: [WorkOrders]
+      summary: Get work order parts (projection)
+      operationId: getWorkOrderParts
+      parameters:
+        - name: work_order_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Parts projection for a work order
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkOrderParts"
+
+  /v1/work-orders/{work_order_id}/evidence:
+    get:
+      tags: [WorkOrders]
+      summary: Get work order evidence (projection)
+      operationId: getWorkOrderEvidence
+      parameters:
+        - name: work_order_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Evidence projection for a work order
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkOrderEvidence"
+
   /v1/engineers/board:
     get:
       tags: [Engineers]
@@ -255,6 +295,31 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/KpiView"
+
+  /v1/ref/{catalog}:
+    get:
+      tags: [Reference]
+      summary: Get reference catalog items
+      operationId: getReferenceCatalog
+      parameters:
+        - name: catalog
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: active
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: true
+      responses:
+        "200":
+          description: Reference catalog items
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReferenceCatalog"
 
 components:
   securitySchemes:
@@ -436,6 +501,74 @@ components:
         next_cursor:
           type: string
           nullable: true
+
+    WorkOrderPartsItem:
+      type: object
+      additionalProperties: false
+      required: [part_id, reserved_qty, installed_qty, consumed_qty, last_event_at]
+      properties:
+        part_id:
+          type: string
+          format: uuid
+        reserved_qty:
+          type: number
+        installed_qty:
+          type: number
+        consumed_qty:
+          type: number
+        last_event_at:
+          type: string
+          format: date-time
+
+    WorkOrderParts:
+      type: object
+      additionalProperties: false
+      required: [work_order_id, items]
+      properties:
+        work_order_id:
+          type: string
+          format: uuid
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkOrderPartsItem"
+
+    WorkOrderEvidenceItem:
+      type: object
+      additionalProperties: false
+      required: [evidence_id, evidence_type, url, created_at]
+      properties:
+        evidence_id:
+          type: string
+          format: uuid
+        evidence_type:
+          type: string
+          enum: [PHOTO, DOCUMENT, SIGNATURE]
+        url:
+          type: string
+        meta:
+          type: object
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        created_by:
+          type: string
+          format: uuid
+          nullable: true
+
+    WorkOrderEvidence:
+      type: object
+      additionalProperties: false
+      required: [work_order_id, items]
+      properties:
+        work_order_id:
+          type: string
+          format: uuid
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkOrderEvidenceItem"
 
     TimelineEvent:
       type: object
