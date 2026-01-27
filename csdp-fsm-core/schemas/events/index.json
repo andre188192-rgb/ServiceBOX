@@ -1,0 +1,21 @@
+{
+  "WORK_ORDER.CREATED": "schemas/events/work_order.created.schema.json",
+  "WORK_ORDER.ASSIGNED": "schemas/events/work_order.assigned.schema.json",
+  "WORK_ORDER.CANCELLED": "schemas/events/work_order.cancelled.schema.json",
+  "WORK_ORDER.CLOSED": "schemas/events/work_order.closed.schema.json",
+
+  "WORK.DISPATCHED": "schemas/events/work.dispatched.schema.json",
+  "WORK.ARRIVED_ON_SITE": "schemas/events/work.arrived_on_site.schema.json",
+  "WORK.STARTED": "schemas/events/work.started.schema.json",
+  "WORK.PAUSED": "schemas/events/work.paused.schema.json",
+  "WORK.RESUMED": "schemas/events/work.resumed.schema.json",
+  "WORK.COMPLETED": "schemas/events/work.completed.schema.json",
+
+  "PART.RESERVED": "schemas/events/part.reserved.schema.json",
+  "PART.INSTALLED": "schemas/events/part.installed.schema.json",
+  "PART.CONSUMED": "schemas/events/part.consumed.schema.json",
+
+  "EVIDENCE.PHOTO_ADDED": "schemas/events/evidence.photo_added.schema.json",
+  "EVIDENCE.DOCUMENT_ADDED": "schemas/events/evidence.document_added.schema.json",
+  "EVIDENCE.SIGNATURE_CAPTURED": "schemas/events/evidence.signature_captured.schema.json"
+}
