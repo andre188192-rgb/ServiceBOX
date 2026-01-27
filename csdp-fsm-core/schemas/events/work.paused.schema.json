@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://csdp.example/schemas/events/work.paused.schema.json",
+  "title": "WORK.PAUSED payload",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["reason_code"],
+  "properties": {
+    "reason_code": { "type": "string", "enum": ["PARTS", "CLIENT", "ACCESS", "SAFETY", "OTHER"] },
+    "comment": { "type": ["string", "null"], "maxLength": 2000 },
+    "eta_minutes": { "type": ["integer", "null"], "minimum": 0, "maximum": 100000 }
+  }
+}

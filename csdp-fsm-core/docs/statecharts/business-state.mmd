@@ -1,0 +1,25 @@
+stateDiagram-v2
+  [*] --> NEW: WORK_ORDER_CREATED
+
+  NEW --> PLANNED: WORK_ORDER_ASSIGNED
+  NEW --> CANCELLED: WORK_ORDER_CANCELLED
+
+  PLANNED --> IN_PROGRESS: WORK_STARTED
+  PLANNED --> ON_HOLD: WORK_PAUSED (reason required)
+  PLANNED --> CANCELLED: WORK_ORDER_CANCELLED
+
+  IN_PROGRESS --> ON_HOLD: WORK_PAUSED (reason required)
+  ON_HOLD --> IN_PROGRESS: WORK_RESUMED
+
+  IN_PROGRESS --> COMPLETED: WORK_COMPLETED
+  COMPLETED --> CLOSED: WORK_ORDER_CLOSED
+
+  CLOSED --> [*]
+
+  %% Reopen policy (optional):
+  CLOSED --> IN_PROGRESS: WORK_ORDER_REOPENED (policy + permission)
+
+  %% Invariants:
+  %% - WORK_ORDER_CLOSED only allowed from COMPLETED.
+  %% - WORK_ORDER_CANCELLED only allowed before COMPLETED.
+  %% - WORK_PAUSED requires payload.reason_code.
