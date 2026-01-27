@@ -25,8 +25,6 @@ tags:
     description: Query API (SLA projection)
   - name: KPI
     description: Query API (aggregates)
-  - name: Reference
-    description: Reference data (catalogs)
 
 paths:
   /v1/events:
@@ -689,35 +687,3 @@ components:
         first_time_fix_percent:
           type: number
           nullable: true
-
-    ReferenceCatalogItem:
-      type: object
-      additionalProperties: false
-      required: [code, title]
-      properties:
-        code:
-          type: string
-        title:
-          type: string
-        description:
-          type: string
-          nullable: true
-        is_active:
-          type: boolean
-        sort_order:
-          type: integer
-        meta:
-          type: object
-          nullable: true
-
-    ReferenceCatalog:
-      type: object
-      additionalProperties: false
-      required: [catalog, items]
-      properties:
-        catalog:
-          type: string
-        items:
-          type: array
-          items:
-            $ref: "#/components/schemas/ReferenceCatalogItem"
