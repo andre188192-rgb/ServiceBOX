@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional, Tuple
 
-from jsonschema import Draft202012Validator
+from jsonschema import Draft202012Validator 
 
 from src.storage import projections_repo
 
@@ -51,6 +51,15 @@ BUSINESS_TRANSITIONS = {
     },
 }
 
+EXECUTION_ALLOWED = {
+    "NOT_STARTED": {"WORK.DISPATCHED", "WORK.STARTED"},
+    "TRAVEL": {"WORK.ARRIVED_ON_SITE", "WORK.STARTED"},
+    "WORK": {"WORK.PAUSED", "WORK.COMPLETED"},
+    "WAITING_PARTS": {"WORK.RESUMED"},
+    "WAITING_CLIENT": {"WORK.RESUMED"},
+    "FINISHED": set(),
+}
+
 EXECUTION_TRANSITIONS = {
     "NOT_STARTED": {"WORK.DISPATCHED": "TRAVEL", "WORK.STARTED": "WORK"},
     "TRAVEL": {"WORK.ARRIVED_ON_SITE": "WORK", "WORK.STARTED": "WORK"},
@@ -76,6 +85,9 @@ ROLE_RULES = {
     "WORK.COMPLETED": {"ENGINEER", "DISPATCHER", "ADMIN"},
     "WORK.DISPATCHED": {"ENGINEER", "DISPATCHER", "ADMIN"},
     "WORK.ARRIVED_ON_SITE": {"ENGINEER", "DISPATCHER", "ADMIN"},
+    "PART.RESERVED": {"DISPATCHER", "ADMIN", "SYSTEM"},
+    "PART.INSTALLED": {"ENGINEER", "DISPATCHER", "ADMIN"},
+    "PART.CONSUMED": {"DISPATCHER", "ADMIN", "SYSTEM"},
     "PART.RESERVED": {"ENGINEER", "DISPATCHER", "ADMIN"},
     "PART.INSTALLED": {"ENGINEER", "DISPATCHER", "ADMIN"},
     "PART.CONSUMED": {"ENGINEER", "DISPATCHER", "ADMIN"},
@@ -187,21 +199,9 @@ def _validate_fsm(event_type: str, envelope: Dict[str, Any], projection: Optiona
             return ValidationResult("REJECTED", "ERR_INVALID_TRANSITION")
         return ValidationResult("ACCEPTED", "OK", normalized_event=envelope)
 
-    if event_type in EXECUTION_TRANSITIONS.get(execution_state, {}):
-        if event_type == "WORK.PAUSED":
-            reason = envelope["payload"].get("reason_code")
-            if reason == "PARTS":
-                return ValidationResult("ACCEPTED", "OK", normalized_event=envelope)
-            if reason == "CLIENT":
-                return ValidationResult("ACCEPTED", "OK", normalized_event=envelope)
-            return ValidationResult("ACCEPTED", "OK", normalized_event=envelope)
-        return ValidationResult("ACCEPTED", "OK", normalized_event=envelope)
-
     if event_type == "WORK_ORDER.CLOSED" and business_state != "COMPLETED":
         return ValidationResult("REJECTED", "ERR_INVALID_TRANSITION")
     if event_type == "WORK_ORDER.CANCELLED" and business_state in {"COMPLETED", "CLOSED"}:
-        return ValidationResult("REJECTED", "ERR_INVALID_TRANSITION")
-    if event_type == "WORK.COMPLETED" and business_state != "IN_PROGRESS":
         return ValidationResult("REJECTED", "ERR_INVALID_TRANSITION")
 
     return ValidationResult("REJECTED", "ERR_INVALID_TRANSITION")
@@ -213,6 +213,8 @@ def _check_composite_guards(business_state: str, execution_state: str) -> Option
     if business_state == "PLANNED" and execution_state not in {"NOT_STARTED", "TRAVEL"}:
         return {"business_state": business_state, "execution_state": execution_state}
     if business_state == "IN_PROGRESS" and execution_state not in {"TRAVEL", "WORK", "WAITING_PARTS", "WAITING_CLIENT"}:
+        return {"business_state": business_state, "execution_state": execution_state}
+    if business_state == "ON_HOLD" and execution_state not in {"WORK", "WAITING_PARTS", "WAITING_CLIENT"}:
         return {"business_state": business_state, "execution_state": execution_state}
     if business_state == "COMPLETED" and execution_state != "FINISHED":
         return {"business_state": business_state, "execution_state": execution_state}

@@ -15,6 +15,7 @@ docker compose up -d postgres
 export DATABASE_URL=postgresql://postgres:postgres@localhost:5432/csdp_fsm
 psql "$DATABASE_URL" -f migrations/001_event_store.sql
 psql "$DATABASE_URL" -f migrations/002_projections.sql
+psql "$DATABASE_URL" -f migrations/003_add_missing_tables.sql
 ```
 
 ## Run API
@@ -28,6 +29,7 @@ uvicorn src.main:app --reload
 curl -X POST http://localhost:8000/v1/events \
   -H 'Content-Type: application/json' \
   -H 'X-Role: DISPATCHER' \
+  -H 'X-Actor-Id: 00000000-0000-0000-0000-000000000001' \
   -d '{
     "event_type":"WORK_ORDER.CREATED",
     "entity_type":"work_order",

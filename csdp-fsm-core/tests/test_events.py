@@ -35,6 +35,12 @@ def _base_envelope(event_type, entity_id):
     }
 
 
+def _fetch_projection(conn, work_order_id):
+    with conn.cursor() as cur:
+        cur.execute("SELECT * FROM work_orders_current WHERE work_order_id = %s", (work_order_id,))
+        return cur.fetchone()
+
+
 def test_full_lifecycle_accept(db_conn):
     actor = Actor(role="DISPATCHER", actor_id=None)
     work_order_id = "00000000-0000-0000-0000-000000000001"
@@ -77,6 +83,28 @@ def test_full_lifecycle_accept(db_conn):
     assert _submit_event(db_conn, closed, Actor(role="DISPATCHER", actor_id=None))["decision"] == "ACCEPTED"
 
 
+def test_cancel_transition(db_conn):
+    dispatcher = Actor(role="DISPATCHER", actor_id=None)
+    work_order_id = "00000000-0000-0000-0000-000000000015"
+
+    created = _base_envelope("WORK_ORDER.CREATED", work_order_id)
+    created["payload"] = {
+        "client_id": "00000000-0000-0000-0000-000000000016",
+        "asset_id": "00000000-0000-0000-0000-000000000017",
+        "priority": "LOW",
+        "type": "MAINTENANCE",
+        "description": "test",
+    }
+    _submit_event(db_conn, created, dispatcher)
+
+    cancelled = _base_envelope("WORK_ORDER.CANCELLED", work_order_id)
+    cancelled["payload"] = {"reason_code": "CLIENT_REQUEST"}
+    assert _submit_event(db_conn, cancelled, dispatcher)["decision"] == "ACCEPTED"
+
+    projection = _fetch_projection(db_conn, work_order_id)
+    assert projection["business_state"] == "CANCELLED"
+
+
 def test_invalid_transition_close_from_planned(db_conn):
     actor = Actor(role="DISPATCHER", actor_id=None)
     work_order_id = "00000000-0000-0000-0000-000000000101"
@@ -103,6 +131,54 @@ def test_invalid_transition_close_from_planned(db_conn):
     validation = validate_event(db_conn, closed, actor)
     assert validation.decision == "REJECTED"
     assert validation.reason_code == "ERR_INVALID_TRANSITION"
+
+
+def test_execution_transitions(db_conn):
+    dispatcher = Actor(role="DISPATCHER", actor_id=None)
+    engineer_id = "00000000-0000-0000-0000-000000000050"
+    work_order_id = "00000000-0000-0000-0000-000000000051"
+
+    created = _base_envelope("WORK_ORDER.CREATED", work_order_id)
+    created["payload"] = {
+        "client_id": "00000000-0000-0000-0000-000000000052",
+        "asset_id": "00000000-0000-0000-0000-000000000053",
+        "priority": "LOW",
+        "type": "MAINTENANCE",
+        "description": "test",
+    }
+    _submit_event(db_conn, created, dispatcher)
+
+    assigned = _base_envelope("WORK_ORDER.ASSIGNED", work_order_id)
+    assigned["payload"] = {
+        "engineer_id": engineer_id,
+        "scheduled_start": datetime.now(timezone.utc).isoformat(),
+        "scheduled_end": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
+    }
+    _submit_event(db_conn, assigned, dispatcher)
+
+    dispatched = _base_envelope("WORK.DISPATCHED", work_order_id)
+    _submit_event(db_conn, dispatched, dispatcher)
+    projection = _fetch_projection(db_conn, work_order_id)
+    assert projection["execution_state"] == "TRAVEL"
+
+    arrived = _base_envelope("WORK.ARRIVED_ON_SITE", work_order_id)
+    _submit_event(db_conn, arrived, Actor(role="ENGINEER", actor_id=engineer_id))
+    projection = _fetch_projection(db_conn, work_order_id)
+    assert projection["execution_state"] == "WORK"
+
+    paused = _base_envelope("WORK.PAUSED", work_order_id)
+    paused["payload"] = {"reason_code": "PARTS"}
+    _submit_event(db_conn, paused, Actor(role="ENGINEER", actor_id=engineer_id))
+    projection = _fetch_projection(db_conn, work_order_id)
+    assert projection["business_state"] == "ON_HOLD"
+    assert projection["execution_state"] == "WAITING_PARTS"
+
+    resumed = _base_envelope("WORK.RESUMED", work_order_id)
+    resumed["payload"] = {"comment": "ok"}
+    _submit_event(db_conn, resumed, Actor(role="ENGINEER", actor_id=engineer_id))
+    projection = _fetch_projection(db_conn, work_order_id)
+    assert projection["business_state"] == "IN_PROGRESS"
+    assert projection["execution_state"] == "WORK"
 
 
 def test_rbac_engineer_other_work_order(db_conn):
@@ -169,6 +245,27 @@ def test_time_policy_drift_mobile(db_conn):
     result = validate_event(db_conn, created, actor)
     assert result.decision == "NEEDS_REVIEW"
     assert result.reason_code == "REV_AMBIGUOUS_TIME"
+
+
+def test_sla_deadlines_set_on_created(db_conn):
+    dispatcher = Actor(role="DISPATCHER", actor_id=None)
+    work_order_id = "00000000-0000-0000-0000-000000000430"
+
+    created = _base_envelope("WORK_ORDER.CREATED", work_order_id)
+    created["payload"] = {
+        "client_id": "00000000-0000-0000-0000-000000000431",
+        "asset_id": "00000000-0000-0000-0000-000000000432",
+        "priority": "HIGH",
+        "type": "MAINTENANCE",
+        "description": "test",
+    }
+    _submit_event(db_conn, created, dispatcher)
+
+    with db_conn.cursor() as cur:
+        cur.execute("SELECT reaction_deadline_at, restore_deadline_at FROM sla_view WHERE work_order_id = %s", (work_order_id,))
+        row = cur.fetchone()
+    assert row["reaction_deadline_at"] is not None
+    assert row["restore_deadline_at"] is not None
 
 
 def test_parts_projection(db_conn):
