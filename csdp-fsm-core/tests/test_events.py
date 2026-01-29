@@ -174,6 +174,7 @@ def test_time_policy_drift_mobile(db_conn):
 def test_parts_projection(db_conn):
     actor = Actor(role="DISPATCHER", actor_id=None)
     work_order_id = "00000000-0000-0000-0000-000000000501"
+    engineer_id = "00000000-0000-0000-0000-000000000530"
 
     created = _base_envelope("WORK_ORDER.CREATED", work_order_id)
     created["payload"] = {
@@ -185,6 +186,20 @@ def test_parts_projection(db_conn):
     }
     _submit_event(db_conn, created, actor)
 
+    assigned = _base_envelope("WORK_ORDER.ASSIGNED", work_order_id)
+    assigned["payload"] = {
+        "engineer_id": engineer_id,
+        "scheduled_start": datetime.now(timezone.utc).isoformat(),
+        "scheduled_end": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
+    }
+    _submit_event(db_conn, assigned, actor)
+
+    for event_type, qty in [("PART.RESERVED", 2), ("PART.INSTALLED", 1), ("PART.CONSUMED", 1)]:
+        event = _base_envelope(event_type, work_order_id)
+        event["payload"] = {"part_id": "00000000-0000-0000-0000-000000000599", "quantity": qty}
+        role = "ENGINEER" if event_type == "PART.INSTALLED" else "DISPATCHER"
+        actor_id = engineer_id if role == "ENGINEER" else None
+        assert _submit_event(db_conn, event, Actor(role=role, actor_id=actor_id))["decision"] == "ACCEPTED"
     for event_type, qty in [("PART.RESERVED", 2), ("PART.INSTALLED", 1), ("PART.CONSUMED", 1)]:
         event = _base_envelope(event_type, work_order_id)
         event["payload"] = {"part_id": "00000000-0000-0000-0000-000000000599", "quantity": qty}
@@ -204,6 +219,7 @@ def test_parts_projection(db_conn):
 def test_evidence_projection(db_conn):
     actor = Actor(role="DISPATCHER", actor_id=None)
     work_order_id = "00000000-0000-0000-0000-000000000601"
+    engineer_id = "00000000-0000-0000-0000-000000000630"
 
     created = _base_envelope("WORK_ORDER.CREATED", work_order_id)
     created["payload"] = {
@@ -215,6 +231,25 @@ def test_evidence_projection(db_conn):
     }
     _submit_event(db_conn, created, actor)
 
+    assigned = _base_envelope("WORK_ORDER.ASSIGNED", work_order_id)
+    assigned["payload"] = {
+        "engineer_id": engineer_id,
+        "scheduled_start": datetime.now(timezone.utc).isoformat(),
+        "scheduled_end": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
+    }
+    _submit_event(db_conn, assigned, actor)
+
+    photo = _base_envelope("EVIDENCE.PHOTO_ADDED", work_order_id)
+    photo["payload"] = {"url": "http://example.com/photo"}
+    _submit_event(db_conn, photo, Actor(role="ENGINEER", actor_id=engineer_id))
+
+    doc = _base_envelope("EVIDENCE.DOCUMENT_ADDED", work_order_id)
+    doc["payload"] = {"url": "http://example.com/doc", "doc_type": "REPORT"}
+    _submit_event(db_conn, doc, Actor(role="ENGINEER", actor_id=engineer_id))
+
+    sig = _base_envelope("EVIDENCE.SIGNATURE_CAPTURED", work_order_id)
+    sig["payload"] = {"signature_url": "http://example.com/sig", "signed_by": "Client"}
+    _submit_event(db_conn, sig, Actor(role="ENGINEER", actor_id=engineer_id))
     photo = _base_envelope("EVIDENCE.PHOTO_ADDED", work_order_id)
     photo["payload"] = {"url": "http://example.com/photo"}
     _submit_event(db_conn, photo, Actor(role="ENGINEER", actor_id=None))
@@ -232,3 +267,120 @@ def test_evidence_projection(db_conn):
         rows = cur.fetchall()
     types = {row["evidence_type"] for row in rows}
     assert types == {"PHOTO", "DOCUMENT", "SIGNATURE"}
+
+
+def test_dispatched_rejected_in_new(db_conn):
+    actor = Actor(role="DISPATCHER", actor_id=None)
+    work_order_id = "00000000-0000-0000-0000-000000000701"
+
+    created = _base_envelope("WORK_ORDER.CREATED", work_order_id)
+    created["payload"] = {
+        "client_id": "00000000-0000-0000-0000-000000000710",
+        "asset_id": "00000000-0000-0000-0000-000000000720",
+        "priority": "LOW",
+        "type": "MAINTENANCE",
+        "description": "test",
+    }
+    _submit_event(db_conn, created, actor)
+
+    dispatched = _base_envelope("WORK.DISPATCHED", work_order_id)
+    validation = validate_event(db_conn, dispatched, Actor(role="DISPATCHER", actor_id=None))
+    assert validation.decision == "REJECTED"
+
+
+def test_parts_rejected_for_unassigned_engineer(db_conn):
+    dispatcher = Actor(role="DISPATCHER", actor_id=None)
+    work_order_id = "00000000-0000-0000-0000-000000000801"
+
+    created = _base_envelope("WORK_ORDER.CREATED", work_order_id)
+    created["payload"] = {
+        "client_id": "00000000-0000-0000-0000-000000000810",
+        "asset_id": "00000000-0000-0000-0000-000000000820",
+        "priority": "LOW",
+        "type": "MAINTENANCE",
+        "description": "test",
+    }
+    _submit_event(db_conn, created, dispatcher)
+
+    assigned = _base_envelope("WORK_ORDER.ASSIGNED", work_order_id)
+    assigned["payload"] = {
+        "engineer_id": "00000000-0000-0000-0000-000000000830",
+        "scheduled_start": datetime.now(timezone.utc).isoformat(),
+        "scheduled_end": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
+    }
+    _submit_event(db_conn, assigned, dispatcher)
+
+    installed = _base_envelope("PART.INSTALLED", work_order_id)
+    installed["payload"] = {"part_id": "00000000-0000-0000-0000-000000000899", "quantity": 1}
+    validation = validate_event(
+        db_conn,
+        installed,
+        Actor(role="ENGINEER", actor_id="00000000-0000-0000-0000-000000000831"),
+    )
+    assert validation.decision == "REJECTED"
+    assert validation.reason_code == "ERR_RBAC_DENIED"
+
+
+def test_sla_deadlines_set_on_assigned(db_conn):
+    dispatcher = Actor(role="DISPATCHER", actor_id=None)
+    work_order_id = "00000000-0000-0000-0000-000000000901"
+
+    created = _base_envelope("WORK_ORDER.CREATED", work_order_id)
+    created["payload"] = {
+        "client_id": "00000000-0000-0000-0000-000000000910",
+        "asset_id": "00000000-0000-0000-0000-000000000920",
+        "priority": "CRITICAL",
+        "type": "MAINTENANCE",
+        "description": "test",
+    }
+    _submit_event(db_conn, created, dispatcher)
+
+    assigned = _base_envelope("WORK_ORDER.ASSIGNED", work_order_id)
+    assigned["payload"] = {
+        "engineer_id": "00000000-0000-0000-0000-000000000930",
+        "scheduled_start": datetime.now(timezone.utc).isoformat(),
+        "scheduled_end": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
+    }
+    result = _submit_event(db_conn, assigned, dispatcher)
+    assert result["decision"] == "ACCEPTED"
+
+    with db_conn.cursor() as cur:
+        cur.execute("SELECT reaction_deadline_at, restore_deadline_at FROM sla_view WHERE work_order_id = %s", (work_order_id,))
+        row = cur.fetchone()
+    assert row["reaction_deadline_at"] is not None
+    assert row["restore_deadline_at"] is not None
+
+
+def test_sla_breach_on_late_start(db_conn):
+    dispatcher = Actor(role="DISPATCHER", actor_id=None)
+    engineer_id = "00000000-0000-0000-0000-000000001030"
+    work_order_id = "00000000-0000-0000-0000-000000001001"
+    past_start = datetime.now(timezone.utc) - timedelta(hours=3)
+
+    created = _base_envelope("WORK_ORDER.CREATED", work_order_id)
+    created["payload"] = {
+        "client_id": "00000000-0000-0000-0000-000000001010",
+        "asset_id": "00000000-0000-0000-0000-000000001020",
+        "priority": "CRITICAL",
+        "type": "MAINTENANCE",
+        "description": "test",
+    }
+    _submit_event(db_conn, created, dispatcher)
+
+    assigned = _base_envelope("WORK_ORDER.ASSIGNED", work_order_id)
+    assigned["payload"] = {
+        "engineer_id": engineer_id,
+        "scheduled_start": past_start.isoformat(),
+        "scheduled_end": (past_start + timedelta(hours=1)).isoformat(),
+    }
+    _submit_event(db_conn, assigned, dispatcher)
+
+    started = _base_envelope("WORK.STARTED", work_order_id)
+    started["payload"] = {"actual_start_reported": datetime.now(timezone.utc).isoformat()}
+    _submit_event(db_conn, started, Actor(role="ENGINEER", actor_id=engineer_id))
+
+    with db_conn.cursor() as cur:
+        cur.execute("SELECT state, breached_at FROM sla_view WHERE work_order_id = %s", (work_order_id,))
+        row = cur.fetchone()
+    assert row["state"] == "BREACHED"
+    assert row["breached_at"] is not None

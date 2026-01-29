@@ -168,6 +168,23 @@ def _validate_fsm(event_type: str, envelope: Dict[str, Any], projection: Optiona
         return ValidationResult("ACCEPTED", "OK", normalized_event=envelope)
 
     if event_type in BUSINESS_TRANSITIONS.get(business_state, {}):
+        if event_type == "WORK.STARTED" and business_state != "PLANNED":
+            return ValidationResult("REJECTED", "ERR_INVALID_TRANSITION")
+        if event_type == "WORK.PAUSED" and business_state not in {"PLANNED", "IN_PROGRESS"}:
+            return ValidationResult("REJECTED", "ERR_INVALID_TRANSITION")
+        if event_type == "WORK.RESUMED" and business_state != "ON_HOLD":
+            return ValidationResult("REJECTED", "ERR_INVALID_TRANSITION")
+        return ValidationResult("ACCEPTED", "OK", normalized_event=envelope)
+
+    if event_type in EXECUTION_TRANSITIONS.get(execution_state, {}):
+        if event_type in {"WORK.DISPATCHED", "WORK.ARRIVED_ON_SITE"} and business_state not in {"PLANNED", "IN_PROGRESS"}:
+            return ValidationResult("REJECTED", "ERR_INVALID_TRANSITION")
+        if event_type == "WORK.STARTED" and business_state != "PLANNED":
+            return ValidationResult("REJECTED", "ERR_INVALID_TRANSITION")
+        if event_type == "WORK.PAUSED" and business_state not in {"PLANNED", "IN_PROGRESS"}:
+            return ValidationResult("REJECTED", "ERR_INVALID_TRANSITION")
+        if event_type == "WORK.RESUMED" and business_state != "ON_HOLD":
+            return ValidationResult("REJECTED", "ERR_INVALID_TRANSITION")
         return ValidationResult("ACCEPTED", "OK", normalized_event=envelope)
 
     if event_type in EXECUTION_TRANSITIONS.get(execution_state, {}):

@@ -25,6 +25,8 @@ tags:
     description: Query API (SLA projection)
   - name: KPI
     description: Query API (aggregates)
+  - name: Reference
+    description: Reference data (catalogs)
 
 paths:
   /v1/events:
@@ -45,6 +47,20 @@ paths:
             minLength: 8
             maxLength: 128
           description: Optional idempotency key for web/api sources.
+        - name: X-Role
+          in: header
+          required: false
+          schema:
+            type: string
+            enum: [ENGINEER, DISPATCHER, MANAGER, ADMIN, SYSTEM]
+          description: Temporary role header (until JWT enforced).
+        - name: X-Actor-Id
+          in: header
+          required: false
+          schema:
+            type: string
+            format: uuid
+          description: Temporary actor id header (until JWT enforced).
       requestBody:
         required: true
         content:
