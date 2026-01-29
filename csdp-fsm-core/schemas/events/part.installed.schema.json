@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://csdp.example/schemas/events/part.installed.schema.json",
+  "title": "PART.INSTALLED payload",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["part_id", "quantity"],
+  "properties": {
+    "part_id": { "type": "string", "format": "uuid" },
+    "quantity": { "type": "number", "exclusiveMinimum": 0 },
+    "serial_number": { "type": ["string", "null"], "maxLength": 128 },
+    "compatible_with_asset_model": { "type": ["boolean", "null"] }
+  }
+}
