@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://csdp.example/schemas/events/work.resumed.schema.json",
+  "title": "WORK.RESUMED payload",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "comment": { "type": ["string", "null"], "maxLength": 2000 }
+  }
+}

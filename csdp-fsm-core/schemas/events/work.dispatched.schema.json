@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://csdp.example/schemas/events/work.dispatched.schema.json",
+  "title": "WORK.DISPATCHED payload",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "dispatch_time_reported": { "type": ["string", "null"], "format": "date-time" },
+    "route_provider": { "type": ["string", "null"], "maxLength": 64 },
+    "estimated_travel_minutes": { "type": ["integer", "null"], "minimum": 0, "maximum": 100000 }
+  }
+}

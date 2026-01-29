@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://csdp.example/schemas/events/part.reserved.schema.json",
+  "title": "PART.RESERVED payload",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["part_id", "quantity"],
+  "properties": {
+    "part_id": { "type": "string", "format": "uuid" },
+    "quantity": { "type": "number", "exclusiveMinimum": 0 },
+    "reservation_ref": { "type": ["string", "null"], "maxLength": 128 }
+  }
+}
