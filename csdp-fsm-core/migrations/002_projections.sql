@@ -102,4 +102,7 @@ INSERT INTO ref_catalog_items (catalog, code, title, sort_order) VALUES
   ('DOC_TYPE', 'REPORT', 'Report', 10),
   ('DOC_TYPE', 'ACT', 'Act', 20),
   ('DOC_TYPE', 'INVOICE', 'Invoice', 30),
-  ('DOC_TYPE', 'OTHER', 'Other', 40);
+  ('DOC_TYPE', 'OTHER', 'Other', 40),
+  ('SYMPTOM', 'GENERIC', 'Generic symptom', 10),
+  ('CAUSE', 'GENERIC', 'Generic cause', 10),
+  ('ACTION', 'GENERIC', 'Generic action', 10);

@@ -269,6 +269,40 @@ def test_evidence_projection(db_conn):
     assert types == {"PHOTO", "DOCUMENT", "SIGNATURE"}
 
 
+def test_invalid_pause_reason_code(db_conn):
+    actor = Actor(role="DISPATCHER", actor_id=None)
+    work_order_id = "00000000-0000-0000-0000-000000000650"
+    engineer_id = "00000000-0000-0000-0000-000000000651"
+
+    created = _base_envelope("WORK_ORDER.CREATED", work_order_id)
+    created["payload"] = {
+        "client_id": "00000000-0000-0000-0000-000000000652",
+        "asset_id": "00000000-0000-0000-0000-000000000653",
+        "priority": "LOW",
+        "type": "MAINTENANCE",
+        "description": "test",
+    }
+    _submit_event(db_conn, created, actor)
+
+    assigned = _base_envelope("WORK_ORDER.ASSIGNED", work_order_id)
+    assigned["payload"] = {
+        "engineer_id": engineer_id,
+        "scheduled_start": datetime.now(timezone.utc).isoformat(),
+        "scheduled_end": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
+    }
+    _submit_event(db_conn, assigned, actor)
+
+    started = _base_envelope("WORK.STARTED", work_order_id)
+    started["payload"] = {"actual_start_reported": datetime.now(timezone.utc).isoformat()}
+    _submit_event(db_conn, started, Actor(role="ENGINEER", actor_id=engineer_id))
+
+    paused = _base_envelope("WORK.PAUSED", work_order_id)
+    paused["payload"] = {"reason_code": "NOT_IN_CATALOG"}
+    validation = validate_event(db_conn, paused, Actor(role="ENGINEER", actor_id=engineer_id))
+    assert validation.decision == "REJECTED"
+    assert validation.reason_code == "ERR_GUARD_FAILED"
+
+
 def test_dispatched_rejected_in_new(db_conn):
     actor = Actor(role="DISPATCHER", actor_id=None)
     work_order_id = "00000000-0000-0000-0000-000000000701"
@@ -317,6 +351,69 @@ def test_parts_rejected_for_unassigned_engineer(db_conn):
         installed,
         Actor(role="ENGINEER", actor_id="00000000-0000-0000-0000-000000000831"),
     )
+    assert validation.decision == "REJECTED"
+    assert validation.reason_code == "ERR_RBAC_DENIED"
+
+
+def test_evidence_rejected_for_unassigned_engineer(db_conn):
+    dispatcher = Actor(role="DISPATCHER", actor_id=None)
+    work_order_id = "00000000-0000-0000-0000-000000000860"
+
+    created = _base_envelope("WORK_ORDER.CREATED", work_order_id)
+    created["payload"] = {
+        "client_id": "00000000-0000-0000-0000-000000000861",
+        "asset_id": "00000000-0000-0000-0000-000000000862",
+        "priority": "LOW",
+        "type": "MAINTENANCE",
+        "description": "test",
+    }
+    _submit_event(db_conn, created, dispatcher)
+
+    assigned = _base_envelope("WORK_ORDER.ASSIGNED", work_order_id)
+    assigned["payload"] = {
+        "engineer_id": "00000000-0000-0000-0000-000000000863",
+        "scheduled_start": datetime.now(timezone.utc).isoformat(),
+        "scheduled_end": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
+    }
+    _submit_event(db_conn, assigned, dispatcher)
+
+    photo = _base_envelope("EVIDENCE.PHOTO_ADDED", work_order_id)
+    photo["payload"] = {"url": "http://example.com/photo"}
+    validation = validate_event(
+        db_conn,
+        photo,
+        Actor(role="ENGINEER", actor_id="00000000-0000-0000-0000-000000000864"),
+    )
+    assert validation.decision == "REJECTED"
+    assert validation.reason_code == "ERR_RBAC_DENIED"
+
+
+def test_part_reserved_rejected_for_engineer(db_conn):
+    dispatcher = Actor(role="DISPATCHER", actor_id=None)
+    engineer_id = "00000000-0000-0000-0000-000000000870"
+    work_order_id = "00000000-0000-0000-0000-000000000871"
+
+    created = _base_envelope("WORK_ORDER.CREATED", work_order_id)
+    created["payload"] = {
+        "client_id": "00000000-0000-0000-0000-000000000872",
+        "asset_id": "00000000-0000-0000-0000-000000000873",
+        "priority": "LOW",
+        "type": "MAINTENANCE",
+        "description": "test",
+    }
+    _submit_event(db_conn, created, dispatcher)
+
+    assigned = _base_envelope("WORK_ORDER.ASSIGNED", work_order_id)
+    assigned["payload"] = {
+        "engineer_id": engineer_id,
+        "scheduled_start": datetime.now(timezone.utc).isoformat(),
+        "scheduled_end": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
+    }
+    _submit_event(db_conn, assigned, dispatcher)
+
+    reserved = _base_envelope("PART.RESERVED", work_order_id)
+    reserved["payload"] = {"part_id": "00000000-0000-0000-0000-000000000899", "quantity": 1}
+    validation = validate_event(db_conn, reserved, Actor(role="ENGINEER", actor_id=engineer_id))
     assert validation.decision == "REJECTED"
     assert validation.reason_code == "ERR_RBAC_DENIED"
 
