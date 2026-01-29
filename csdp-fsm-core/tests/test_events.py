@@ -297,6 +297,10 @@ def test_parts_projection(db_conn):
         role = "ENGINEER" if event_type == "PART.INSTALLED" else "DISPATCHER"
         actor_id = engineer_id if role == "ENGINEER" else None
         assert _submit_event(db_conn, event, Actor(role=role, actor_id=actor_id))["decision"] == "ACCEPTED"
+    for event_type, qty in [("PART.RESERVED", 2), ("PART.INSTALLED", 1), ("PART.CONSUMED", 1)]:
+        event = _base_envelope(event_type, work_order_id)
+        event["payload"] = {"part_id": "00000000-0000-0000-0000-000000000599", "quantity": qty}
+        assert _submit_event(db_conn, event, Actor(role="ENGINEER", actor_id=None))["decision"] == "ACCEPTED"
 
     with db_conn.cursor() as cur:
         cur.execute(
@@ -343,6 +347,17 @@ def test_evidence_projection(db_conn):
     sig = _base_envelope("EVIDENCE.SIGNATURE_CAPTURED", work_order_id)
     sig["payload"] = {"signature_url": "http://example.com/sig", "signed_by": "Client"}
     _submit_event(db_conn, sig, Actor(role="ENGINEER", actor_id=engineer_id))
+    photo = _base_envelope("EVIDENCE.PHOTO_ADDED", work_order_id)
+    photo["payload"] = {"url": "http://example.com/photo"}
+    _submit_event(db_conn, photo, Actor(role="ENGINEER", actor_id=None))
+
+    doc = _base_envelope("EVIDENCE.DOCUMENT_ADDED", work_order_id)
+    doc["payload"] = {"url": "http://example.com/doc", "doc_type": "REPORT"}
+    _submit_event(db_conn, doc, Actor(role="ENGINEER", actor_id=None))
+
+    sig = _base_envelope("EVIDENCE.SIGNATURE_CAPTURED", work_order_id)
+    sig["payload"] = {"signature_url": "http://example.com/sig", "signed_by": "Client"}
+    _submit_event(db_conn, sig, Actor(role="ENGINEER", actor_id=None))
 
     with db_conn.cursor() as cur:
         cur.execute("SELECT evidence_type FROM work_order_evidence WHERE work_order_id = %s", (work_order_id,))

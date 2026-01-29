@@ -4,9 +4,9 @@ import json
 import os
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
-from jsonschema import Draft202012Validator
+from jsonschema import Draft202012Validator 
 
 from src.storage import projections_repo
 
@@ -60,6 +60,14 @@ EXECUTION_ALLOWED = {
     "FINISHED": set(),
 }
 
+EXECUTION_TRANSITIONS = {
+    "NOT_STARTED": {"WORK.DISPATCHED": "TRAVEL", "WORK.STARTED": "WORK"},
+    "TRAVEL": {"WORK.ARRIVED_ON_SITE": "WORK", "WORK.STARTED": "WORK"},
+    "WORK": {"WORK.PAUSED": "WAITING", "WORK.COMPLETED": "FINISHED"},
+    "WAITING_PARTS": {"WORK.RESUMED": "WORK"},
+    "WAITING_CLIENT": {"WORK.RESUMED": "WORK"},
+}
+
 SLA_TRANSITIONS = {
     "IN_SLA": {"SLA.AT_RISK": "AT_RISK", "SLA.BREACHED": "BREACHED"},
     "AT_RISK": {"SLA.RECOVERED": "IN_SLA", "SLA.BREACHED": "BREACHED"},
@@ -80,6 +88,9 @@ ROLE_RULES = {
     "PART.RESERVED": {"DISPATCHER", "ADMIN", "SYSTEM"},
     "PART.INSTALLED": {"ENGINEER", "DISPATCHER", "ADMIN"},
     "PART.CONSUMED": {"DISPATCHER", "ADMIN", "SYSTEM"},
+    "PART.RESERVED": {"ENGINEER", "DISPATCHER", "ADMIN"},
+    "PART.INSTALLED": {"ENGINEER", "DISPATCHER", "ADMIN"},
+    "PART.CONSUMED": {"ENGINEER", "DISPATCHER", "ADMIN"},
     "EVIDENCE.PHOTO_ADDED": {"ENGINEER", "DISPATCHER", "ADMIN"},
     "EVIDENCE.DOCUMENT_ADDED": {"ENGINEER", "DISPATCHER", "ADMIN"},
     "EVIDENCE.SIGNATURE_CAPTURED": {"ENGINEER", "DISPATCHER", "ADMIN"},
@@ -177,7 +188,7 @@ def _validate_fsm(event_type: str, envelope: Dict[str, Any], projection: Optiona
             return ValidationResult("REJECTED", "ERR_INVALID_TRANSITION")
         return ValidationResult("ACCEPTED", "OK", normalized_event=envelope)
 
-    if event_type in EXECUTION_ALLOWED.get(execution_state, set()):
+    if event_type in EXECUTION_TRANSITIONS.get(execution_state, {}):
         if event_type in {"WORK.DISPATCHED", "WORK.ARRIVED_ON_SITE"} and business_state not in {"PLANNED", "IN_PROGRESS"}:
             return ValidationResult("REJECTED", "ERR_INVALID_TRANSITION")
         if event_type == "WORK.STARTED" and business_state != "PLANNED":
@@ -186,15 +197,6 @@ def _validate_fsm(event_type: str, envelope: Dict[str, Any], projection: Optiona
             return ValidationResult("REJECTED", "ERR_INVALID_TRANSITION")
         if event_type == "WORK.RESUMED" and business_state != "ON_HOLD":
             return ValidationResult("REJECTED", "ERR_INVALID_TRANSITION")
-        if event_type == "WORK.COMPLETED" and business_state != "IN_PROGRESS":
-            return ValidationResult("REJECTED", "ERR_INVALID_TRANSITION")
-        if event_type == "WORK.PAUSED":
-            reason = envelope["payload"].get("reason_code")
-            if reason == "PARTS":
-                return ValidationResult("ACCEPTED", "OK", normalized_event=envelope)
-            if reason == "CLIENT":
-                return ValidationResult("ACCEPTED", "OK", normalized_event=envelope)
-            return ValidationResult("ACCEPTED", "OK", normalized_event=envelope)
         return ValidationResult("ACCEPTED", "OK", normalized_event=envelope)
 
     if event_type == "WORK_ORDER.CLOSED" and business_state != "COMPLETED":

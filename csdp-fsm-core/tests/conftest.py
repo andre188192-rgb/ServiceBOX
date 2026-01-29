@@ -22,6 +22,7 @@ def _apply_migrations(conn: psycopg.Connection) -> None:
             cur.execute(sql)
 
 
+
 @pytest.fixture()
 def db_conn():
     conn = psycopg.connect(_db_url(), row_factory=dict_row)
