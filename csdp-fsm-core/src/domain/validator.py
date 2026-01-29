@@ -4,7 +4,7 @@ import json
 import os
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 from jsonschema import Draft202012Validator
 
@@ -76,9 +76,9 @@ ROLE_RULES = {
     "WORK.COMPLETED": {"ENGINEER", "DISPATCHER", "ADMIN"},
     "WORK.DISPATCHED": {"ENGINEER", "DISPATCHER", "ADMIN"},
     "WORK.ARRIVED_ON_SITE": {"ENGINEER", "DISPATCHER", "ADMIN"},
-    "PART.RESERVED": {"DISPATCHER", "ADMIN", "SYSTEM"},
+    "PART.RESERVED": {"ENGINEER", "DISPATCHER", "ADMIN"},
     "PART.INSTALLED": {"ENGINEER", "DISPATCHER", "ADMIN"},
-    "PART.CONSUMED": {"DISPATCHER", "ADMIN", "SYSTEM"},
+    "PART.CONSUMED": {"ENGINEER", "DISPATCHER", "ADMIN"},
     "EVIDENCE.PHOTO_ADDED": {"ENGINEER", "DISPATCHER", "ADMIN"},
     "EVIDENCE.DOCUMENT_ADDED": {"ENGINEER", "DISPATCHER", "ADMIN"},
     "EVIDENCE.SIGNATURE_CAPTURED": {"ENGINEER", "DISPATCHER", "ADMIN"},
@@ -185,6 +185,9 @@ def _validate_fsm(event_type: str, envelope: Dict[str, Any], projection: Optiona
             return ValidationResult("REJECTED", "ERR_INVALID_TRANSITION")
         if event_type == "WORK.RESUMED" and business_state != "ON_HOLD":
             return ValidationResult("REJECTED", "ERR_INVALID_TRANSITION")
+        return ValidationResult("ACCEPTED", "OK", normalized_event=envelope)
+
+    if event_type in EXECUTION_TRANSITIONS.get(execution_state, {}):
         if event_type == "WORK.PAUSED":
             reason = envelope["payload"].get("reason_code")
             if reason == "PARTS":
