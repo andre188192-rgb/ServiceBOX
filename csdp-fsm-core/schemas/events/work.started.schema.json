@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://csdp.example/schemas/events/work.started.schema.json",
+  "title": "WORK.STARTED payload",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "actual_start_reported": { "type": ["string", "null"], "format": "date-time" }
+  }
+}

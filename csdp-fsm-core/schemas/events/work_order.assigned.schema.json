@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://csdp.example/schemas/events/work_order.assigned.schema.json",
+  "title": "WORK_ORDER.ASSIGNED payload",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["scheduled_start", "scheduled_end"],
+  "properties": {
+    "engineer_id": { "type": ["string", "null"], "format": "uuid" },
+    "team_id": { "type": ["string", "null"], "format": "uuid" },
+    "scheduled_start": { "type": "string", "format": "date-time" },
+    "scheduled_end": { "type": "string", "format": "date-time" },
+    "expected_duration_minutes": { "type": ["integer", "null"], "minimum": 1, "maximum": 100000 },
+    "dispatch_note": { "type": ["string", "null"], "maxLength": 1000 }
+  },
+  "allOf": [
+    {
+      "oneOf": [
+        { "required": ["engineer_id"] },
+        { "required": ["team_id"] }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://csdp.example/schemas/event-envelope.schema.json",
+  "title": "EventEnvelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "event_type",
+    "entity_type",
+    "entity_id",
+    "payload",
+    "source"
+  ],
+  "properties": {
+    "event_id": { "type": "string", "format": "uuid" },
+
+    "client_event_id": {
+      "type": ["string", "null"],
+      "minLength": 8,
+      "maxLength": 128
+    },
+
+    "idempotency_key": {
+      "type": ["string", "null"],
+      "minLength": 8,
+      "maxLength": 128
+    },
+
+    "correlation_id": { "type": ["string", "null"], "format": "uuid" },
+    "causation_id": { "type": ["string", "null"], "format": "uuid" },
+
+    "schema_version": { "type": "integer", "minimum": 1, "default": 1 },
+
+    "event_type": { "type": "string", "minLength": 3, "maxLength": 64 },
+
+    "entity_type": {
+      "type": "string",
+      "enum": ["work_order", "asset", "engineer", "contract"]
+    },
+
+    "entity_id": { "type": "string", "format": "uuid" },
+
+    "created_at_reported": { "type": ["string", "null"], "format": "date-time" },
+
+    "source": { "type": "string", "enum": ["web", "mobile", "api", "automation", "system"] },
+
+    "payload": { "type": "object" }
+  },
+
+  "allOf": [
+    {
+      "if": { "properties": { "source": { "const": "mobile" } } },
+      "then": { "required": ["client_event_id"] }
+    }
+  ]
+}

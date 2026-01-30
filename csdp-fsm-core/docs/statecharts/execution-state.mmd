@@ -1,0 +1,18 @@
+stateDiagram-v2
+  [*] --> NOT_STARTED
+
+  NOT_STARTED --> TRAVEL: ENGINEER_DISPATCHED
+  TRAVEL --> WORK: ARRIVED_ON_SITE
+
+  WORK --> WAITING_PARTS: WORK_PAUSED(reason=PARTS)
+  WORK --> WAITING_CLIENT: WORK_PAUSED(reason=CLIENT)
+  WAITING_PARTS --> WORK: WORK_RESUMED
+  WAITING_CLIENT --> WORK: WORK_RESUMED
+
+  WORK --> FINISHED: WORK_COMPLETED
+  FINISHED --> [*]
+
+  %% Invariants:
+  %% - ARRIVED_ON_SITE only allowed after ENGINEER_DISPATCHED.
+  %% - WORK_COMPLETED only allowed from WORK.
+  %% - WORK_PAUSED must record reason and (if possible) ETA.
