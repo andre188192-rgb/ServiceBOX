@@ -21,6 +21,7 @@ def apply_event(conn: psycopg.Connection, event: Dict[str, Any]) -> None:
         projection = _fetch_projection(conn, work_order_id)
         if projection:
             _ensure_sla_deadlines(conn, projection, event)
+
     elif event_type == "WORK_ORDER.ASSIGNED":
         _update_projection(
             conn,
@@ -37,17 +38,21 @@ def apply_event(conn: psycopg.Connection, event: Dict[str, Any]) -> None:
         projection = _fetch_projection(conn, work_order_id)
         if projection:
             _ensure_sla_deadlines(conn, projection, event)
+
     elif event_type == "WORK.DISPATCHED":
         if projection and projection["execution_state"] == "NOT_STARTED":
             _update_projection(conn, work_order_id, {"execution_state": "TRAVEL", "last_event_id": event_id})
+
     elif event_type == "WORK.ARRIVED_ON_SITE":
-        _update_projection(conn, work_order_id, {"execution_state": "WORK", "last_event_id": event_id})
+        # arrival makes sense only from TRAVEL
+        if projection and projection["execution_state"] == "TRAVEL":
+            _update_projection(conn, work_order_id, {"execution_state": "WORK", "last_event_id": event_id})
+
     elif event_type == "WORK.STARTED":
         updates = {
             "last_event_id": event_id,
             "business_state": "IN_PROGRESS",
-            "actual_start_reported": payload.get("actual_start_reported")
-            or event.get("created_at_reported"),
+            "actual_start_reported": payload.get("actual_start_reported") or event.get("created_at_reported"),
             "actual_start_effective": effective_time,
         }
         if projection and projection["execution_state"] in {"NOT_STARTED", "TRAVEL"}:
@@ -56,45 +61,57 @@ def apply_event(conn: psycopg.Connection, event: Dict[str, Any]) -> None:
         projection = _fetch_projection(conn, work_order_id)
         if projection:
             _apply_reaction_deadline(conn, projection, effective_time)
+
     elif event_type == "WORK.PAUSED":
         reason = payload.get("reason_code")
         updates = {"business_state": "ON_HOLD", "last_event_id": event_id}
-        if reason == "PARTS":
-            updates["execution_state"] = "WAITING_PARTS"
-        elif reason == "CLIENT":
-            updates["execution_state"] = "WAITING_CLIENT"
+
+        # execution_state flips only from WORK
+        if projection and projection.get("execution_state") == "WORK":
+            if reason == "PARTS":
+                updates["execution_state"] = "WAITING_PARTS"
+            elif reason == "CLIENT":
+                updates["execution_state"] = "WAITING_CLIENT"
+            # иначе оставляем execution_state=WORK (не меняем)
+
         _update_projection(conn, work_order_id, updates)
+
     elif event_type == "WORK.RESUMED":
         _update_projection(
             conn,
             work_order_id,
             {"business_state": "IN_PROGRESS", "execution_state": "WORK", "last_event_id": event_id},
         )
+
     elif event_type == "WORK.COMPLETED":
         updates = {
             "last_event_id": event_id,
             "business_state": "COMPLETED",
             "execution_state": "FINISHED",
-            "actual_end_reported": payload.get("actual_end_reported")
-            or event.get("created_at_reported"),
+            "actual_end_reported": payload.get("actual_end_reported") or event.get("created_at_reported"),
             "actual_end_effective": effective_time,
         }
         if projection and projection.get("actual_start_effective") and effective_time:
             start = projection["actual_start_effective"]
             if isinstance(start, str):
                 start = datetime.fromisoformat(start.replace("Z", "+00:00"))
-            if isinstance(effective_time, str):
-                effective_time = datetime.fromisoformat(effective_time.replace("Z", "+00:00"))
-            diff = effective_time - start
+            eff = effective_time
+            if isinstance(eff, str):
+                eff = datetime.fromisoformat(eff.replace("Z", "+00:00"))
+            diff = eff - start
             updates["downtime_minutes"] = int(diff.total_seconds() // 60)
+
         _update_projection(conn, work_order_id, updates)
         projection = _fetch_projection(conn, work_order_id)
         if projection:
             _apply_restore_deadline(conn, projection, effective_time)
+
     elif event_type == "WORK_ORDER.CLOSED":
         _update_projection(conn, work_order_id, {"business_state": "CLOSED", "last_event_id": event_id})
+
     elif event_type == "WORK_ORDER.CANCELLED":
         _update_projection(conn, work_order_id, {"business_state": "CANCELLED", "last_event_id": event_id})
+
     elif event_type.startswith("SLA."):
         sla_state = _sla_state_from_event(event_type)
         _update_projection(conn, work_order_id, {"sla_state": sla_state, "last_event_id": event_id})
@@ -252,7 +269,7 @@ def _update_engineer_board(conn: psycopg.Connection, projection: Dict[str, Any])
 
 
 def _map_engineer_status(execution_state: str) -> str:
-    if execution_state in {"TRAVEL"}:
+    if execution_state == "TRAVEL":
         return "TRAVEL"
     if execution_state in {"WORK", "WAITING_PARTS", "WAITING_CLIENT"}:
         return "WORK"
@@ -273,14 +290,17 @@ def _sla_state_from_event(event_type: str) -> str:
 def _ensure_sla_deadlines(conn: psycopg.Connection, projection: Dict[str, Any], event: Dict[str, Any]) -> None:
     priority = projection["priority"]
     reaction_delta, restore_delta = _sla_durations(priority)
+
     # Base SLA deadlines on scheduled_start if provided, otherwise created_at_system.
     base = projection.get("scheduled_start") or event.get("created_at_system")
     if isinstance(base, str):
         base = datetime.fromisoformat(base.replace("Z", "+00:00"))
     if base is None:
         base = datetime.now(timezone.utc)
+
     reaction_deadline = base + reaction_delta
     restore_deadline = base + restore_delta
+
     query = """
         INSERT INTO sla_view (work_order_id, reaction_deadline_at, restore_deadline_at, state, last_calc_at)
         VALUES (%s, %s, %s, 'IN_SLA', now())
@@ -298,14 +318,18 @@ def _apply_reaction_deadline(conn: psycopg.Connection, projection: Dict[str, Any
         return
     if isinstance(effective_time, str):
         effective_time = datetime.fromisoformat(effective_time.replace("Z", "+00:00"))
+
     with conn.cursor() as cur:
         cur.execute("SELECT reaction_deadline_at FROM sla_view WHERE work_order_id = %s", (projection["work_order_id"],))
         row = cur.fetchone()
+
     if not row or row["reaction_deadline_at"] is None:
         return
+
     deadline = row["reaction_deadline_at"]
     if isinstance(deadline, str):
         deadline = datetime.fromisoformat(deadline.replace("Z", "+00:00"))
+
     if effective_time > deadline:
         _mark_sla_breached(conn, projection["work_order_id"])
 
@@ -315,14 +339,18 @@ def _apply_restore_deadline(conn: psycopg.Connection, projection: Dict[str, Any]
         return
     if isinstance(effective_time, str):
         effective_time = datetime.fromisoformat(effective_time.replace("Z", "+00:00"))
+
     with conn.cursor() as cur:
         cur.execute("SELECT restore_deadline_at FROM sla_view WHERE work_order_id = %s", (projection["work_order_id"],))
         row = cur.fetchone()
+
     if not row or row["restore_deadline_at"] is None:
         return
+
     deadline = row["restore_deadline_at"]
     if isinstance(deadline, str):
         deadline = datetime.fromisoformat(deadline.replace("Z", "+00:00"))
+
     if effective_time > deadline:
         _mark_sla_breached(conn, projection["work_order_id"])
 

@@ -42,6 +42,7 @@ def _fetch_projection(conn, work_order_id):
 
 
 def test_imports_ok():
+    # Smoke test: модули должны импортироваться без циклических импортов/ошибок.
     from src.domain import apply_event as apply_module
     from src.domain import validator as validator_module
     from src.api import routes_events as routes_events_module
@@ -75,19 +76,35 @@ def test_full_lifecycle_accept(db_conn):
 
     started = _base_envelope("WORK.STARTED", work_order_id)
     started["payload"] = {"actual_start_reported": datetime.now(timezone.utc).isoformat()}
-    assert _submit_event(db_conn, started, Actor(role="ENGINEER", actor_id="00000000-0000-0000-0000-000000000030"))["decision"] == "ACCEPTED"
+    assert _submit_event(
+        db_conn,
+        started,
+        Actor(role="ENGINEER", actor_id="00000000-0000-0000-0000-000000000030"),
+    )["decision"] == "ACCEPTED"
 
     paused = _base_envelope("WORK.PAUSED", work_order_id)
     paused["payload"] = {"reason_code": "PARTS"}
-    assert _submit_event(db_conn, paused, Actor(role="ENGINEER", actor_id="00000000-0000-0000-0000-000000000030"))["decision"] == "ACCEPTED"
+    assert _submit_event(
+        db_conn,
+        paused,
+        Actor(role="ENGINEER", actor_id="00000000-0000-0000-0000-000000000030"),
+    )["decision"] == "ACCEPTED"
 
     resumed = _base_envelope("WORK.RESUMED", work_order_id)
     resumed["payload"] = {"comment": "ok"}
-    assert _submit_event(db_conn, resumed, Actor(role="ENGINEER", actor_id="00000000-0000-0000-0000-000000000030"))["decision"] == "ACCEPTED"
+    assert _submit_event(
+        db_conn,
+        resumed,
+        Actor(role="ENGINEER", actor_id="00000000-0000-0000-0000-000000000030"),
+    )["decision"] == "ACCEPTED"
 
     completed = _base_envelope("WORK.COMPLETED", work_order_id)
     completed["payload"] = {"work_summary": "done"}
-    assert _submit_event(db_conn, completed, Actor(role="ENGINEER", actor_id="00000000-0000-0000-0000-000000000030"))["decision"] == "ACCEPTED"
+    assert _submit_event(
+        db_conn,
+        completed,
+        Actor(role="ENGINEER", actor_id="00000000-0000-0000-0000-000000000030"),
+    )["decision"] == "ACCEPTED"
 
     closed = _base_envelope("WORK_ORDER.CLOSED", work_order_id)
     assert _submit_event(db_conn, closed, Actor(role="DISPATCHER", actor_id=None))["decision"] == "ACCEPTED"
@@ -176,8 +193,23 @@ def test_execution_transitions(db_conn):
     projection = _fetch_projection(db_conn, work_order_id)
     assert projection["execution_state"] == "WORK"
 
+    paused = _base_envelope("WORK.PAUSED", work_order_id)
+    paused["payload"] = {"reason_code": "PARTS"}
+    _submit_event(db_conn, paused, Actor(role="ENGINEER", actor_id=engineer_id))
+    projection = _fetch_projection(db_conn, work_order_id)
+    assert projection["business_state"] == "ON_HOLD"
+    assert projection["execution_state"] == "WAITING_PARTS"
+
+    resumed = _base_envelope("WORK.RESUMED", work_order_id)
+    resumed["payload"] = {"comment": "ok"}
+    _submit_event(db_conn, resumed, Actor(role="ENGINEER", actor_id=engineer_id))
+    projection = _fetch_projection(db_conn, work_order_id)
+    assert projection["business_state"] == "IN_PROGRESS"
+    assert projection["execution_state"] == "WORK"
+
 
 def test_pause_sets_waiting_parts(db_conn):
+    # Узкий тест: pause(reason=PARTS) должен переключать execution_state в WAITING_PARTS
     dispatcher = Actor(role="DISPATCHER", actor_id=None)
     engineer_id = "00000000-0000-0000-0000-000000000055"
     work_order_id = "00000000-0000-0000-0000-000000000056"
@@ -211,20 +243,6 @@ def test_pause_sets_waiting_parts(db_conn):
     projection = _fetch_projection(db_conn, work_order_id)
     assert projection["execution_state"] == "WAITING_PARTS"
 
-    paused = _base_envelope("WORK.PAUSED", work_order_id)
-    paused["payload"] = {"reason_code": "PARTS"}
-    _submit_event(db_conn, paused, Actor(role="ENGINEER", actor_id=engineer_id))
-    projection = _fetch_projection(db_conn, work_order_id)
-    assert projection["business_state"] == "ON_HOLD"
-    assert projection["execution_state"] == "WAITING_PARTS"
-
-    resumed = _base_envelope("WORK.RESUMED", work_order_id)
-    resumed["payload"] = {"comment": "ok"}
-    _submit_event(db_conn, resumed, Actor(role="ENGINEER", actor_id=engineer_id))
-    projection = _fetch_projection(db_conn, work_order_id)
-    assert projection["business_state"] == "IN_PROGRESS"
-    assert projection["execution_state"] == "WORK"
-
 
 def test_rbac_engineer_other_work_order(db_conn):
     dispatcher = Actor(role="DISPATCHER", actor_id=None)
@@ -249,7 +267,11 @@ def test_rbac_engineer_other_work_order(db_conn):
     _submit_event(db_conn, assigned, dispatcher)
 
     started = _base_envelope("WORK.STARTED", work_order_id)
-    validation = validate_event(db_conn, started, Actor(role="ENGINEER", actor_id="00000000-0000-0000-0000-000000000231"))
+    validation = validate_event(
+        db_conn,
+        started,
+        Actor(role="ENGINEER", actor_id="00000000-0000-0000-0000-000000000231"),
+    )
     assert validation.decision == "REJECTED"
     assert validation.reason_code == "ERR_RBAC_DENIED"
 
@@ -307,7 +329,10 @@ def test_sla_deadlines_set_on_created(db_conn):
     _submit_event(db_conn, created, dispatcher)
 
     with db_conn.cursor() as cur:
-        cur.execute("SELECT reaction_deadline_at, restore_deadline_at FROM sla_view WHERE work_order_id = %s", (work_order_id,))
+        cur.execute(
+            "SELECT reaction_deadline_at, restore_deadline_at FROM sla_view WHERE work_order_id = %s",
+            (work_order_id,),
+        )
         row = cur.fetchone()
     assert row["reaction_deadline_at"] is not None
     assert row["restore_deadline_at"] is not None
@@ -336,6 +361,7 @@ def test_parts_projection(db_conn):
     }
     _submit_event(db_conn, assigned, actor)
 
+    # reserved/consumed — dispatcher (строгая RBAC), installed — engineer
     for event_type, qty in [("PART.RESERVED", 2), ("PART.INSTALLED", 1), ("PART.CONSUMED", 1)]:
         event = _base_envelope(event_type, work_order_id)
         event["payload"] = {"part_id": "00000000-0000-0000-0000-000000000599", "quantity": qty}
@@ -569,7 +595,10 @@ def test_sla_deadlines_set_on_assigned(db_conn):
     assert result["decision"] == "ACCEPTED"
 
     with db_conn.cursor() as cur:
-        cur.execute("SELECT reaction_deadline_at, restore_deadline_at FROM sla_view WHERE work_order_id = %s", (work_order_id,))
+        cur.execute(
+            "SELECT reaction_deadline_at, restore_deadline_at FROM sla_view WHERE work_order_id = %s",
+            (work_order_id,),
+        )
         row = cur.fetchone()
     assert row["reaction_deadline_at"] is not None
     assert row["restore_deadline_at"] is not None
