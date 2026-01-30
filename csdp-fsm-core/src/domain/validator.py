@@ -51,6 +51,7 @@ BUSINESS_TRANSITIONS = {
     },
 }
 
+# Оставляем, если где-то ещё используется как публичная константа.
 EXECUTION_ALLOWED = {
     "NOT_STARTED": {"WORK.DISPATCHED", "WORK.STARTED"},
     "TRAVEL": {"WORK.ARRIVED_ON_SITE", "WORK.STARTED"},
@@ -60,12 +61,22 @@ EXECUTION_ALLOWED = {
     "FINISHED": set(),
 }
 
+# Это используется для "допустимость execution-ивента из execution_state".
+EXECUTION_TRANSITIONS = {
+    "NOT_STARTED": {"WORK.DISPATCHED": "TRAVEL", "WORK.STARTED": "WORK"},
+    "TRAVEL": {"WORK.ARRIVED_ON_SITE": "WORK", "WORK.STARTED": "WORK"},
+    "WORK": {"WORK.PAUSED": "WAITING", "WORK.COMPLETED": "FINISHED"},
+    "WAITING_PARTS": {"WORK.RESUMED": "WORK"},
+    "WAITING_CLIENT": {"WORK.RESUMED": "WORK"},
+}
+
 SLA_TRANSITIONS = {
     "IN_SLA": {"SLA.AT_RISK": "AT_RISK", "SLA.BREACHED": "BREACHED"},
     "AT_RISK": {"SLA.RECOVERED": "IN_SLA", "SLA.BREACHED": "BREACHED"},
     "BREACHED": {"SLA.BREACH_ACCEPTED": "ACCEPTED_BREACH"},
 }
 
+# ВАЖНО: без дубликатов ключей. Иначе Python молча перетрет значения.
 ROLE_RULES = {
     "WORK_ORDER.CREATED": {"DISPATCHER", "ADMIN", "SYSTEM"},
     "WORK_ORDER.ASSIGNED": {"DISPATCHER", "SYSTEM", "ADMIN"},
@@ -77,9 +88,12 @@ ROLE_RULES = {
     "WORK.COMPLETED": {"ENGINEER", "DISPATCHER", "ADMIN"},
     "WORK.DISPATCHED": {"ENGINEER", "DISPATCHER", "ADMIN"},
     "WORK.ARRIVED_ON_SITE": {"ENGINEER", "DISPATCHER", "ADMIN"},
+
+    # parts: выбираем более строгую RBAC-модель (как было изначально): reserved/consumed — не инженер.
     "PART.RESERVED": {"DISPATCHER", "ADMIN", "SYSTEM"},
     "PART.INSTALLED": {"ENGINEER", "DISPATCHER", "ADMIN"},
     "PART.CONSUMED": {"DISPATCHER", "ADMIN", "SYSTEM"},
+
     "EVIDENCE.PHOTO_ADDED": {"ENGINEER", "DISPATCHER", "ADMIN"},
     "EVIDENCE.DOCUMENT_ADDED": {"ENGINEER", "DISPATCHER", "ADMIN"},
     "EVIDENCE.SIGNATURE_CAPTURED": {"ENGINEER", "DISPATCHER", "ADMIN"},
@@ -168,18 +182,8 @@ def _validate_fsm(event_type: str, envelope: Dict[str, Any], projection: Optiona
             return ValidationResult("REJECTED", "ERR_INVALID_TRANSITION")
         return ValidationResult("ACCEPTED", "OK", normalized_event=envelope)
 
+    # BUSINESS FSM (управляет business_state)
     if event_type in BUSINESS_TRANSITIONS.get(business_state, {}):
-        if event_type == "WORK.STARTED" and business_state != "PLANNED":
-            return ValidationResult("REJECTED", "ERR_INVALID_TRANSITION")
-        if event_type == "WORK.PAUSED" and business_state not in {"PLANNED", "IN_PROGRESS"}:
-            return ValidationResult("REJECTED", "ERR_INVALID_TRANSITION")
-        if event_type == "WORK.RESUMED" and business_state != "ON_HOLD":
-            return ValidationResult("REJECTED", "ERR_INVALID_TRANSITION")
-        return ValidationResult("ACCEPTED", "OK", normalized_event=envelope)
-
-    if event_type in EXECUTION_ALLOWED.get(execution_state, set()):
-        if event_type in {"WORK.DISPATCHED", "WORK.ARRIVED_ON_SITE"} and business_state not in {"PLANNED", "IN_PROGRESS"}:
-            return ValidationResult("REJECTED", "ERR_INVALID_TRANSITION")
         if event_type == "WORK.STARTED" and business_state != "PLANNED":
             return ValidationResult("REJECTED", "ERR_INVALID_TRANSITION")
         if event_type == "WORK.PAUSED" and business_state not in {"PLANNED", "IN_PROGRESS"}:
@@ -188,13 +192,19 @@ def _validate_fsm(event_type: str, envelope: Dict[str, Any], projection: Optiona
             return ValidationResult("REJECTED", "ERR_INVALID_TRANSITION")
         if event_type == "WORK.COMPLETED" and business_state != "IN_PROGRESS":
             return ValidationResult("REJECTED", "ERR_INVALID_TRANSITION")
-        if event_type == "WORK.PAUSED":
-            reason = envelope["payload"].get("reason_code")
-            if reason == "PARTS":
-                return ValidationResult("ACCEPTED", "OK", normalized_event=envelope)
-            if reason == "CLIENT":
-                return ValidationResult("ACCEPTED", "OK", normalized_event=envelope)
-            return ValidationResult("ACCEPTED", "OK", normalized_event=envelope)
+        return ValidationResult("ACCEPTED", "OK", normalized_event=envelope)
+
+    # EXECUTION FSM (управляет execution_state) — проверяем по transitions
+    if event_type in EXECUTION_TRANSITIONS.get(execution_state, {}):
+        # Доп. согласование execution vs business (композитные правила)
+        if event_type in {"WORK.DISPATCHED", "WORK.ARRIVED_ON_SITE"} and business_state not in {"PLANNED", "IN_PROGRESS"}:
+            return ValidationResult("REJECTED", "ERR_INVALID_TRANSITION")
+        if event_type == "WORK.STARTED" and business_state != "PLANNED":
+            return ValidationResult("REJECTED", "ERR_INVALID_TRANSITION")
+        if event_type == "WORK.PAUSED" and business_state not in {"PLANNED", "IN_PROGRESS"}:
+            return ValidationResult("REJECTED", "ERR_INVALID_TRANSITION")
+        if event_type == "WORK.RESUMED" and business_state != "ON_HOLD":
+            return ValidationResult("REJECTED", "ERR_INVALID_TRANSITION")
         return ValidationResult("ACCEPTED", "OK", normalized_event=envelope)
 
     if event_type == "WORK_ORDER.CLOSED" and business_state != "COMPLETED":

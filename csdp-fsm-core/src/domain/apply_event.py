@@ -16,16 +16,17 @@ def apply_event(conn: psycopg.Connection, event: Dict[str, Any]) -> None:
 
     projection = _fetch_projection(conn, work_order_id)
 
-    if event_type == "WORK_ORDER.CREATED":
-        _insert_work_order(conn, event, payload)
-        projection = _fetch_projection(conn, work_order_id)
-        if projection:
-            _ensure_sla_deadlines(conn, projection, event)
-    elif event_type == "WORK_ORDER.ASSIGNED":
-        _update_projection(
-            conn,
-            work_order_id,
-            {
+ if event_type == "WORK_ORDER.CREATED":
+    _insert_work_order(conn, event, payload)
+    projection = _fetch_projection(conn, work_order_id)
+    if projection:
+        _ensure_sla_deadlines(conn, projection, event)
+
+elif event_type == "WORK_ORDER.ASSIGNED":
+    _update_projection(
+        conn,
+        work_order_id,
+        {
                 "last_event_id": event_id,
                 "assigned_engineer_id": payload.get("engineer_id"),
                 "assigned_team_id": payload.get("team_id"),

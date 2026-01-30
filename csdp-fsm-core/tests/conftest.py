@@ -16,10 +16,11 @@ def _db_url() -> str:
 
 def _apply_migrations(conn: psycopg.Connection) -> None:
     migrations_dir = ROOT / "migrations"
-    for name in ["001_event_store.sql", "002_projections.sql"]:
+    for name in ["001_event_store.sql", "002_projections.sql", "003_add_missing_tables.sql"]:
         sql = (migrations_dir / name).read_text(encoding="utf-8")
         with conn.cursor() as cur:
             cur.execute(sql)
+
 
 
 @pytest.fixture()
