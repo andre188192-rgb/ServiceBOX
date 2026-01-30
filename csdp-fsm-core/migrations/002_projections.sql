@@ -47,6 +47,7 @@ CREATE TABLE work_order_parts (
 );
 
 CREATE TABLE work_order_evidence (
+  work_order_id UUID NOT NULL REFERENCES work_orders_current(work_order_id) ON DELETE CASCADE,
   work_order_id UUID NOT NULL,
   evidence_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   evidence_type TEXT NOT NULL CHECK (evidence_type IN ('PHOTO','DOCUMENT','SIGNATURE')),
