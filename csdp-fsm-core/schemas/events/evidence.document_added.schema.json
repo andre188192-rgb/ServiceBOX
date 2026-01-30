@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://csdp.example/schemas/events/evidence.document_added.schema.json",
+  "title": "EVIDENCE.DOCUMENT_ADDED payload",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["url", "doc_type"],
+  "properties": {
+    "url": { "type": "string", "maxLength": 2000 },
+    "doc_type": { "type": "string", "enum": ["REPORT", "ACT", "INVOICE", "OTHER"] },
+    "comment": { "type": ["string", "null"], "maxLength": 1000 }
+  }
+}
