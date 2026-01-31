@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://csdp.example/schemas/events/work.arrived_on_site.schema.json",
+  "title": "WORK.ARRIVED_ON_SITE payload",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "arrived_time_reported": { "type": ["string", "null"], "format": "date-time" },
+    "gps": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["lat", "lon"],
+      "properties": {
+        "lat": { "type": "number", "minimum": -90, "maximum": 90 },
+        "lon": { "type": "number", "minimum": -180, "maximum": 180 }
+      }
+    }
+  }
+}

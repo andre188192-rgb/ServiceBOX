@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://csdp.example/schemas/events/work_order.closed.schema.json",
+  "title": "WORK_ORDER.CLOSED payload",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "signature_url": { "type": ["string", "null"], "maxLength": 2000 },
+    "closure_comment": { "type": ["string", "null"], "maxLength": 2000 }
+  }
+}

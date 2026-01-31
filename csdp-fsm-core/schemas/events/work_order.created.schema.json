@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://csdp.example/schemas/events/work_order.created.schema.json",
+  "title": "WORK_ORDER.CREATED payload",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["client_id", "asset_id", "priority", "type", "description"],
+  "properties": {
+    "client_id": { "type": "string", "format": "uuid" },
+    "asset_id": { "type": "string", "format": "uuid" },
+    "contract_id": { "type": ["string", "null"], "format": "uuid" },
+    "priority": { "type": "string", "enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW"] },
+    "type": {
+      "type": "string",
+      "enum": ["EMERGENCY_REPAIR", "MAINTENANCE", "CONSULTING_AUDIT", "INSTALL_COMMISSION", "TRAINING"]
+    },
+    "description": { "type": "string", "minLength": 3, "maxLength": 4000 },
+    "channel": { "type": "string", "enum": ["DISPATCHER", "PORTAL", "SENSOR", "EMAIL", "PHONE", "MOBILE"], "default": "DISPATCHER" },
+    "contact_id": { "type": ["string", "null"], "format": "uuid" }
+  }
+}

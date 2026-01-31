@@ -1,0 +1,8 @@
+src/domain/
+src/storage/
+migrations/001_event_store.sql
+migrations/002_projections.sql
+schemas/
+openapi/
+docs/
+rfcs/
