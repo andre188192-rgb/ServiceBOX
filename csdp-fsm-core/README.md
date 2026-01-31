@@ -15,6 +15,7 @@ docker compose up -d postgres
 export DATABASE_URL=postgresql://postgres:postgres@localhost:5432/csdp_fsm
 psql "$DATABASE_URL" -f migrations/001_event_store.sql
 psql "$DATABASE_URL" -f migrations/002_projections.sql
+psql "$DATABASE_URL" -f migrations/003_add_missing_tables.sql
 ```
 
 ## Run API

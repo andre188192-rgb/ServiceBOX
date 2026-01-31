@@ -11,12 +11,15 @@ sys.path.append(str(ROOT))
 
 
 def _db_url() -> str:
-    return os.environ.get("TEST_DATABASE_URL", os.environ.get("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/csdp_fsm_test"))
+    return os.environ.get(
+        "TEST_DATABASE_URL",
+        os.environ.get("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/csdp_fsm_test"),
+    )
 
 
 def _apply_migrations(conn: psycopg.Connection) -> None:
     migrations_dir = ROOT / "migrations"
-    for name in ["001_event_store.sql", "002_projections.sql"]:
+    for name in ["001_event_store.sql", "002_projections.sql", "003_add_missing_tables.sql"]:
         sql = (migrations_dir / name).read_text(encoding="utf-8")
         with conn.cursor() as cur:
             cur.execute(sql)
