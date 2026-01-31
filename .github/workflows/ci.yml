@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: csdp_fsm_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    env:
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/csdp_fsm_test
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 50
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Fetch base ref
+        run: |
+          git fetch --no-tags --prune --depth=50 origin ${{ github.base_ref || 'main' }} || true
+      - name: Compile Python
+        run: |
+          shopt -s globstar
+          python -m py_compile csdp-fsm-core/src/**/*.py
+      - name: Check locked paths
+        run: python csdp-fsm-core/scripts/check_locked_paths.py
+      - name: Test
+        run: pytest -q

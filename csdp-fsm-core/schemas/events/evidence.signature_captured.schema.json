@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://csdp.example/schemas/events/evidence.signature_captured.schema.json",
+  "title": "EVIDENCE.SIGNATURE_CAPTURED payload",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["signature_url", "signed_by"],
+  "properties": {
+    "signature_url": { "type": "string", "maxLength": 2000 },
+    "signed_by": { "type": "string", "maxLength": 256 },
+    "signed_at_reported": { "type": ["string", "null"], "format": "date-time" }
+  }
+}

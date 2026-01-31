@@ -1,0 +1,10 @@
+# Locked core paths (relative to repo root).
+csdp-fsm-core/src/domain/validator.py
+csdp-fsm-core/src/domain/apply_event.py
+csdp-fsm-core/src/storage/
+csdp-fsm-core/migrations/001_event_store.sql
+csdp-fsm-core/migrations/002_projections.sql
+csdp-fsm-core/schemas/
+csdp-fsm-core/openapi/
+csdp-fsm-core/docs/
+csdp-fsm-core/rfcs/
