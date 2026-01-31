@@ -81,9 +81,9 @@ def apply_event(conn: psycopg.Connection, event: Dict[str, Any]) -> None:
         if projection and projection.get("actual_start_effective") and effective_time:
             start = projection["actual_start_effective"]
             if isinstance(start, str):
-                start = datetime.fromisoformat(start.replace("Z", "+00:00"))
+                start = _parse_time(start)
             if isinstance(effective_time, str):
-                effective_time = datetime.fromisoformat(effective_time.replace("Z", "+00:00"))
+                effective_time = _parse_time(effective_time)
             diff = effective_time - start
             updates["downtime_minutes"] = int(diff.total_seconds() // 60)
         _update_projection(conn, work_order_id, updates)
@@ -308,7 +308,7 @@ def _ensure_sla_deadlines(conn: psycopg.Connection, projection: Dict[str, Any], 
         contract = contracts_repo.get_contract_by_id(conn, contract_id)
     base = event.get("created_at_system")
     if isinstance(base, str):
-        base = datetime.fromisoformat(base.replace("Z", "+00:00"))
+        base = _parse_time(base)
     if base is None:
         base = datetime.now(timezone.utc)
     reaction_deadline = None
@@ -356,7 +356,7 @@ def _apply_reaction_deadline(conn: psycopg.Connection, projection: Dict[str, Any
     if effective_time is None:
         return
     if isinstance(effective_time, str):
-        effective_time = datetime.fromisoformat(effective_time.replace("Z", "+00:00"))
+        effective_time = _parse_time(effective_time)
     with conn.cursor() as cur:
         cur.execute("SELECT reaction_deadline_at FROM sla_view WHERE work_order_id = %s", (projection["work_order_id"],))
         row = cur.fetchone()
@@ -364,7 +364,7 @@ def _apply_reaction_deadline(conn: psycopg.Connection, projection: Dict[str, Any
         return
     deadline = row["reaction_deadline_at"]
     if isinstance(deadline, str):
-        deadline = datetime.fromisoformat(deadline.replace("Z", "+00:00"))
+        deadline = _parse_time(deadline)
     if effective_time > deadline:
         _mark_sla_breached(conn, projection["work_order_id"])
 
@@ -373,7 +373,7 @@ def _apply_restore_deadline(conn: psycopg.Connection, projection: Dict[str, Any]
     if effective_time is None:
         return
     if isinstance(effective_time, str):
-        effective_time = datetime.fromisoformat(effective_time.replace("Z", "+00:00"))
+        effective_time = _parse_time(effective_time)
     with conn.cursor() as cur:
         cur.execute("SELECT restore_deadline_at FROM sla_view WHERE work_order_id = %s", (projection["work_order_id"],))
         row = cur.fetchone()
@@ -381,7 +381,7 @@ def _apply_restore_deadline(conn: psycopg.Connection, projection: Dict[str, Any]
         return
     deadline = row["restore_deadline_at"]
     if isinstance(deadline, str):
-        deadline = datetime.fromisoformat(deadline.replace("Z", "+00:00"))
+        deadline = _parse_time(deadline)
     if effective_time > deadline:
         _mark_sla_breached(conn, projection["work_order_id"])
 
@@ -408,3 +408,10 @@ def _upsert_sla_view(conn: psycopg.Connection, work_order_id: str, state: str) -
     """
     with conn.cursor() as cur:
         cur.execute(query, (work_order_id, state))
+
+
+def _parse_time(value: str) -> datetime:
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed
