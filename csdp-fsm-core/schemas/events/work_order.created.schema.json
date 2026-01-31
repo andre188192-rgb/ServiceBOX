@@ -8,6 +8,7 @@
   "properties": {
     "client_id": { "type": "string", "format": "uuid" },
     "asset_id": { "type": "string", "format": "uuid" },
+    "contract_id": { "type": ["string", "null"], "format": "uuid" },
     "priority": { "type": "string", "enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW"] },
     "type": {
       "type": "string",

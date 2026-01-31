@@ -193,20 +193,6 @@ def test_execution_transitions(db_conn):
     projection = _fetch_projection(db_conn, work_order_id)
     assert projection["execution_state"] == "WORK"
 
-    paused = _base_envelope("WORK.PAUSED", work_order_id)
-    paused["payload"] = {"reason_code": "PARTS"}
-    _submit_event(db_conn, paused, Actor(role="ENGINEER", actor_id=engineer_id))
-    projection = _fetch_projection(db_conn, work_order_id)
-    assert projection["business_state"] == "ON_HOLD"
-    assert projection["execution_state"] == "WAITING_PARTS"
-
-    resumed = _base_envelope("WORK.RESUMED", work_order_id)
-    resumed["payload"] = {"comment": "ok"}
-    _submit_event(db_conn, resumed, Actor(role="ENGINEER", actor_id=engineer_id))
-    projection = _fetch_projection(db_conn, work_order_id)
-    assert projection["business_state"] == "IN_PROGRESS"
-    assert projection["execution_state"] == "WORK"
-
 
 def test_pause_sets_waiting_parts(db_conn):
     # Узкий тест: pause(reason=PARTS) должен переключать execution_state в WAITING_PARTS

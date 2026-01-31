@@ -72,7 +72,7 @@ def apply_event(conn: psycopg.Connection, event: Dict[str, Any]) -> None:
                 updates["execution_state"] = "WAITING_PARTS"
             elif reason == "CLIENT":
                 updates["execution_state"] = "WAITING_CLIENT"
-            # иначе оставляем execution_state=WORK (не меняем)
+            # else: keep execution_state=WORK
 
         _update_projection(conn, work_order_id, updates)
 
@@ -95,9 +95,11 @@ def apply_event(conn: psycopg.Connection, event: Dict[str, Any]) -> None:
             start = projection["actual_start_effective"]
             if isinstance(start, str):
                 start = datetime.fromisoformat(start.replace("Z", "+00:00"))
+
             eff = effective_time
             if isinstance(eff, str):
                 eff = datetime.fromisoformat(eff.replace("Z", "+00:00"))
+
             diff = eff - start
             updates["downtime_minutes"] = int(diff.total_seconds() // 60)
 
@@ -320,7 +322,10 @@ def _apply_reaction_deadline(conn: psycopg.Connection, projection: Dict[str, Any
         effective_time = datetime.fromisoformat(effective_time.replace("Z", "+00:00"))
 
     with conn.cursor() as cur:
-        cur.execute("SELECT reaction_deadline_at FROM sla_view WHERE work_order_id = %s", (projection["work_order_id"],))
+        cur.execute(
+            "SELECT reaction_deadline_at FROM sla_view WHERE work_order_id = %s",
+            (projection["work_order_id"],),
+        )
         row = cur.fetchone()
 
     if not row or row["reaction_deadline_at"] is None:
@@ -341,7 +346,10 @@ def _apply_restore_deadline(conn: psycopg.Connection, projection: Dict[str, Any]
         effective_time = datetime.fromisoformat(effective_time.replace("Z", "+00:00"))
 
     with conn.cursor() as cur:
-        cur.execute("SELECT restore_deadline_at FROM sla_view WHERE work_order_id = %s", (projection["work_order_id"],))
+        cur.execute(
+            "SELECT restore_deadline_at FROM sla_view WHERE work_order_id = %s",
+            (projection["work_order_id"],),
+        )
         row = cur.fetchone()
 
     if not row or row["restore_deadline_at"] is None:
